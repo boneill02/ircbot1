@@ -1,17 +1,18 @@
 #define _POSIX_C_SOURCE 200112L
 
-#define DEBUG 1
-
 #include <netdb.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "config.h"
+
 typedef struct {
-	char *nick, *channel, *host, *port;
+	char *nick, *chan, *host, *port;
 	int conn;
 } IRC_Connection;
 
@@ -25,17 +26,12 @@ int i, j, l, sl, o = -1;
 char buf[513];
 char sbuf[512];
 
-void write_raw(char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(sbuf, 512, fmt, ap);
-	va_end(ap);
-	write(connection.conn, sbuf, strlen(sbuf));
-#if DEBUG
-	printf("<< %s", sbuf);
-#endif
-}
+void connect_to_network();
+void handle_input(IRC_Input *input);
+void start_bot();
+void usage(const char *argv0);
+void write_raw(char *fmt, ...);
+
 
 void connect_to_network()
 {
@@ -54,8 +50,8 @@ void connect_to_network()
 
 void handle_input(IRC_Input *input)
 {
-	if (!strncmp(input->command, "001", 3) && connection.channel != NULL)
-		write_raw("JOIN %s\r\n", connection.channel);
+	if (!strncmp(input->command, "001", 3) && connection.chan != NULL)
+		write_raw("JOIN %s\r\n", connection.chan);
 
 	if (!strncmp(input->command, "PRIVMSG", 7) || !strncmp(input->command, "NOTICE", 6)) {
 		if (input->where == NULL || input->message == NULL) return;
@@ -67,9 +63,11 @@ void handle_input(IRC_Input *input)
 			input->target = input->where;
 		else
 			input->target = input->from;
-
-		if (!strncmp(input->message, "hi", 2) && !strncmp(input->where, "#botchan", 8)) {
-			write_raw("PRIVMSG #botchan :Hello, world!\r\n");
+		
+		if (!strncmp(input->where, connection.chan, strlen(connection.chan))) {
+			if (!strncmp(input->message, "hello", 5)) {
+				write_raw("PRIVMSG %s :Hello, world!\r\n", connection.chan);
+			}
 		}
 	}
 }
@@ -124,12 +122,45 @@ void start_bot()
 	}
 }
 
+void write_raw(char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(sbuf, 512, fmt, ap);
+	va_end(ap);
+	write(connection.conn, sbuf, strlen(sbuf));
+#if DEBUG
+	printf("<< %s", sbuf);
+#endif
+}
+
+void usage(const char *argv0)
+{
+	printf("usage: %s [-h host] [-p port] [-n nick] [-c chan]\n", argv0);
+}
+
 int main(int argc, char *argv[])
 {
-	connection.nick = "bot";
-	connection.channel = "#botchan"; 
-	connection.host = "localhost";
-	connection.port = "6667";
+	connection.nick = BOT_NICK;
+	connection.chan = BOT_CHAN;
+	connection.host = BOT_HOST;
+	connection.port = BOT_PORT;
+	if (argc > 1) {
+		for (int i = 1; i < argc; i++) {
+			switch (argv[i][0]) {
+				case '-':
+					switch (argv[i][1]) {
+						case 'h': connection.host = argv[++i]; break;
+						case 'p': connection.port = argv[++i]; break;
+						case 'n': connection.nick = argv[++i]; break;
+						case 'c': connection.chan = argv[++i]; break;
+						default: usage(argv[0]);
+					}
+					break;
+				default: usage(argv[0]);
+			}
+		}
+	}
 
 	connect_to_network();
 	start_bot();

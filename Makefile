@@ -2,7 +2,7 @@ include config.mk
 
 BIN=ib1
 
-SRC=$(patsubst %.c, %.o, $(wildcard *.c))
+SRC=$(patsubst src/%.c, src/%.o, $(wildcard src/*.c))
 
 all: $(BIN)
 
@@ -16,4 +16,4 @@ $(BIN): $(SRC)
 	$(CC) -c $(CFLAGS) -o $@ $^
 
 clean:
-	rm $(wildcard *.o) $(BIN)
+	rm -f $(wildcard src/*.o) $(BIN)
