@@ -10,15 +10,7 @@
 #include <unistd.h>
 
 #include "config.h"
-
-typedef struct {
-	char *nick, *chan, *host, *port;
-	int conn;
-} IRC_Connection;
-
-typedef struct {
-	char *from, *command, *where, *message, *sep, *target;
-} IRC_Input;
+#include "ib1.h"
 
 IRC_Connection connection;
 
@@ -30,8 +22,6 @@ void connect_to_network();
 void handle_input(IRC_Input *input);
 void start_bot();
 void usage(const char *argv0);
-void write_raw(char *fmt, ...);
-
 
 void connect_to_network()
 {
@@ -54,7 +44,8 @@ void handle_input(IRC_Input *input)
 		write_raw("JOIN %s\r\n", connection.chan);
 
 	if (!strncmp(input->command, "PRIVMSG", 7) || !strncmp(input->command, "NOTICE", 6)) {
-		if (input->where == NULL || input->message == NULL) return;
+		if (input->where == NULL || input->message == NULL)
+			return;
 		if ((input->sep = strchr(input->from, '!')) != NULL)
 			input->from[input->sep - input->from] = '\0';
 
@@ -64,11 +55,9 @@ void handle_input(IRC_Input *input)
 		else
 			input->target = input->from;
 		
-		if (!strncmp(input->where, connection.chan, strlen(connection.chan))) {
-			if (!strncmp(input->message, "hello", 5)) {
-				write_raw("PRIVMSG %s :Hello, world!\r\n", connection.chan);
-			}
-		}
+		if (!strncmp(input->where, connection.chan, strlen(connection.chan)))
+			if (!strncmp(input->message, "hello", 5))
+				privmsg(connection.chan, "Hello, world!");
 	}
 }
 
@@ -105,15 +94,17 @@ void start_bot()
 								case 2: input.command = buf + start; break;
 								case 3: input.where = buf + start; break;
 							}
-							if (j == l - 1) continue;
-								start = j + 1;
-							} else if (buf[j] == ':' && wordcount == 3) {
+							if (j == l - 1)
+								continue;
+							start = j + 1;
+						} else if (buf[j] == ':' && wordcount == 3) {
 							if (j < l - 1) input.message = buf + j + 1;
 							break;
 						}
 					}
 				}
-				if (wordcount < 2) continue;
+				if (wordcount < 2)
+					continue;
 
 				handle_input(&input);
 				wordcount = 0;
@@ -134,6 +125,17 @@ void write_raw(char *fmt, ...)
 #endif
 }
 
+void privmsg(char *channel, char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	sprintf(sbuf, "PRIVMSG %s :", channel);
+	vsnprintf(sbuf + strlen(sbuf), 512, fmt, ap);
+	va_end(ap);
+	sprintf(sbuf + strlen(sbuf), "\r\n");
+	write(connection.conn, sbuf, strlen(sbuf));
+}
+
 void usage(const char *argv0)
 {
 	printf("usage: %s [-h host] [-p port] [-n nick] [-c chan]\n", argv0);
@@ -149,21 +151,38 @@ int main(int argc, char *argv[])
 		for (int i = 1; i < argc; i++) {
 			switch (argv[i][0]) {
 				case '-':
-					switch (argv[i][1]) {
-						case 'h': connection.host = argv[++i]; break;
-						case 'p': connection.port = argv[++i]; break;
-						case 'n': connection.nick = argv[++i]; break;
-						case 'c': connection.chan = argv[++i]; break;
-						default: usage(argv[0]);
+					if (i < argc - 1) {
+						switch (argv[i][1]) {
+							case 'h':
+								connection.host = argv[++i];
+								break;
+							case 'p':
+								connection.port = argv[++i];
+								break;
+							case 'n':
+								connection.nick = argv[++i];
+								break;
+							case 'c':
+								connection.chan = argv[++i];
+								break;
+							default:
+								usage(argv[0]);
+								goto end;
+						}
+					} else {
+						usage(argv[0]);
+						goto end;
 					}
 					break;
-				default: usage(argv[0]);
+				default:
+					usage(argv[0]);
+					goto end;
 			}
 		}
 	}
 
 	connect_to_network();
 	start_bot();
-
-	return 0;
+end:
+	return EXIT_SUCCESS;
 }
